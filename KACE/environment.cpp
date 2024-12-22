@@ -1,5 +1,6 @@
 #include "environment.h"
 #include "utils.h"
+#include "config.h"
 #include <MemoryTracker/memorytracker.h>
 #include <Logger/Logger.h>
 #include <PEMapper/pefile.h>
@@ -24,7 +25,6 @@ typedef struct _RTL_PROCESS_MODULE_INFORMATION_EX {
     PVOID DefaultBase;
 } RTL_PROCESS_MODULE_INFORMATION_EX, *PRTL_PROCESS_MODULE_INFORMATION_EX;
 
-#define IMPORT_MODULE_DIRECTORY "c:\\emu\\"
 
 /*
 struct windows_module {

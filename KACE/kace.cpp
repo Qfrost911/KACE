@@ -18,6 +18,7 @@
 
 #include "ntoskrnl_provider.h"
 #include "provider.h"
+#include "config.h"
 
 //#define MONITOR_ACCESS //This will monitor every read/write with a page_guard - SLOW - Better debugging
 
@@ -25,6 +26,7 @@
 
 using proxyCall = uint64_t(__fastcall*)(...);
 proxyCall DriverEntry = nullptr;
+proxyCall ProcessNotify = nullptr;
 
 #define READ_VIOLATION 0
 #define WRITE_VIOLATION 1
@@ -124,7 +126,7 @@ LONG ExceptionHandler(EXCEPTION_POINTERS* e) {
             auto retaddr = *(uint64_t*)e->ContextRecord->Rsp;
             auto pe = PEFile::FindModule(retaddr);
             if (pe)
-                Logger::Log("Return address : %s:%llx\n", pe->name.c_str(), retaddr - pe->GetImageBase());
+                Logger::Log("Return address : %s:0x%llx\n", pe->name.c_str(), retaddr - pe->GetImageBase());
                 */
            // exceptionMutex.unlock();
             return EXCEPTION_CONTINUE_EXECUTION;
@@ -132,11 +134,15 @@ LONG ExceptionHandler(EXCEPTION_POINTERS* e) {
         }
     }
   //  exceptionMutex.unlock();
+    auto pe = PEFile::FindModule(ep);
+    if (pe)
+        Logger::Log("VEH Unhandle Exception : %s:0x%llx\n", pe->name.c_str(), ep - pe->GetImageBase());
+    else
+        Logger::Log("VEH Unhandle Exception : 0x%llx\n", ep);
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-const wchar_t* driverName = L"\\Driver\\vgk";
-const wchar_t* registryBuffer = L"\\REGISTRY\\MACHINE\\SYSTEM\\ControlSet001\\Services\\vgk";
+
 
 DWORD FakeDriverEntry(LPVOID) {
 
@@ -145,11 +151,11 @@ DWORD FakeDriverEntry(LPVOID) {
     Logger::Log("Calling the driver entrypoint\n");
 
     drvObj.Size = sizeof(drvObj);
-    drvObj.DriverName.Buffer = (WCHAR*)driverName;
-    drvObj.DriverName.Length = lstrlenW(driverName);
+    drvObj.DriverName.Buffer = (WCHAR*)DRIVER_NAME;
+    drvObj.DriverName.Length = lstrlenW(DRIVER_NAME);
     drvObj.DriverName.MaximumLength = 16;
 
-    RegistryPath.Buffer = (WCHAR*)registryBuffer;
+    RegistryPath.Buffer = (WCHAR*)REGISTRY_BUFFER;
     RegistryPath.Length = lstrlenW(RegistryPath.Buffer) * 2;
     RegistryPath.MaximumLength = lstrlenW(RegistryPath.Buffer) * 2;
 
@@ -184,6 +190,7 @@ DWORD FakeDriverEntry(LPVOID) {
     FakeSystemProcess.Protection.Level = 7;
     FakeSystemProcess.WoW64Process = nullptr;
     FakeSystemProcess.CreateTime.QuadPart = GetTickCount64();
+    memcpy_s(FakeSystemProcess.ImageFileName, sizeof(UCHAR) * 15, "System", 8);
 
     FakeCPU.CurrentThread = (_KTHREAD*)&FakeKernelThread;
     FakeCPU.IdleThread = (_KTHREAD*)&FakeKernelThread;
@@ -206,7 +213,7 @@ DWORD FakeDriverEntry(LPVOID) {
     LDR_DATA_TABLE_ENTRY* ldrentry = (LDR_DATA_TABLE_ENTRY*)MemoryTracker::AllocateVariable(sizeof(LDR_DATA_TABLE_ENTRY));
     drvObj.DriverSection = ldrentry;
     
-    ldrentry->FullDllName.Buffer = (wchar_t*)L"c:\\Program Files\\Riot Vanguard\\vgk.sys";
+    ldrentry->FullDllName.Buffer = (wchar_t*)LDR_FULLDLLNAME;
     ldrentry->FullDllName.Length = lstrlenW(ldrentry->FullDllName.Buffer) * 2;
     ldrentry->FullDllName.MaximumLength = ldrentry->FullDllName.Length;
 
@@ -229,6 +236,55 @@ DWORD FakeDriverEntry(LPVOID) {
     return 0;
 }
 
+DWORD FakeProcessNotify(LPVOID) { 
+
+    HANDLE ParentId = (HANDLE)0x100, ChildId = (HANDLE)0x1000;
+    BOOLEAN Create = TRUE;
+
+    memset(&FakeProcessThread, 0, sizeof(FakeProcessThread));
+    memset(&FakeProcess, 0, sizeof(FakeProcess));
+
+
+    InitializeListHead(&FakeProcessThread.Tcb.Header.WaitListHead);
+    InitializeListHead(&FakeProcess.Pcb.Header.WaitListHead);
+    printf("old_ethread=0x%p\n", (_ETHREAD*)__readgsqword(0x188));
+    __writegsqword(0x188, (DWORD64)&FakeProcessThread); //Fake KTHREAD
+    printf("new_ethread=0x%p\n", (_ETHREAD*)__readgsqword(0x188));
+    printf("FakeProcessThread=0x%p\n", &FakeProcessThread);
+    printf("FakeProcess=0x%p\n", &FakeProcess);
+    FakeProcessThread.Tcb.Process = (_KPROCESS*)&FakeProcess; //PsGetThreadProcess
+    FakeProcessThread.Tcb.ApcState.Process = (_KPROCESS*)&FakeProcess; //PsGetCurrentProcess
+    FakeProcessThread.Cid.UniqueProcess = (void*)ParentId; //PsGetThreadProcessId
+    FakeProcessThread.Cid.UniqueThread = (void*)0x10;        //PsGetThreadId
+    FakeProcessThread.Tcb.PreviousMode = 0; //PsGetThreadPreviousMode
+    FakeProcessThread.Tcb.State = 1; //
+    FakeProcessThread.Tcb.InitialStack = (void*)0x1000;
+    FakeProcessThread.Tcb.StackBase = (void*)0x1500;
+    FakeProcessThread.Tcb.StackLimit = (void*)0x2000;
+    FakeProcessThread.Tcb.ThreadLock = 11;
+    FakeProcessThread.Tcb.LockEntries = (_KLOCK_ENTRY*)22;
+
+    FakeProcess.UniqueProcessId = (void*)ParentId;
+    FakeProcess.Protection.Level = 0;
+    FakeProcess.WoW64Process = nullptr;
+    FakeProcess.CreateTime.QuadPart = GetTickCount64();
+    FakeProcess.SectionBaseAddress = (void*)0x400000;
+    memcpy_s(FakeProcess.ImageFileName, sizeof(UCHAR) * 15, "test.exe", 8);
+
+
+    FakeSystemProcess.ActiveProcessLinks.Blink = reinterpret_cast<PLIST_ENTRY>( (uintptr_t)&FakeProcess + 0x448);
+    FakeProcess.ActiveProcessLinks.Flink = reinterpret_cast<PLIST_ENTRY>((uintptr_t)&FakeSystemProcess + 0x448);
+
+
+    MemoryTracker::TrackVariable((uintptr_t)&FakeSystemProcess, sizeof(FakeSystemProcess), (char*)"PID4.EPROCESS");
+    MemoryTracker::TrackVariable((uintptr_t)&FakeProcess, sizeof(FakeProcess), (char*)"FAKEPROCESS.EPROCESS");
+    MemoryTracker::TrackVariable((uintptr_t)&FakeProcessThread, sizeof(FakeProcessThread), (char*)"FAKEPROCESS.ETHREAD");
+
+    auto result = ProcessNotify(ParentId, ChildId, Create);
+    Logger::Log("FakeProcessNotify Thread Done! Return = %llx\n", result);
+    return 0; 
+}
+
 __forceinline void init_dirs() {
     std::filesystem::path p = "c:\\";
     for (auto& key : { "\\kace", "\\ca", "\\ca", "\\windows" }) {
@@ -239,7 +295,7 @@ __forceinline void init_dirs() {
 }
 
 int main(int argc, char* argv[]) {
-    _unlink("C:\\Windows\\vgkbootstatus.dat");
+    // _unlink("C:\\Windows\\vgkbootstatus.dat");
     AddVectoredExceptionHandler(true, ExceptionHandler);
 
     init_dirs();
@@ -267,7 +323,7 @@ int main(int argc, char* argv[]) {
     if (argc > 1)
         DriverPath = argv[1];
     else
-        DriverPath = "C:\\emu\\easyanticheat_2.sys";
+        DriverPath = DEFAULT_MODULE;
 
     auto MainModule = PEFile::Open(DriverPath, "MyDriver");
     MainModule->ResolveImport();
@@ -282,25 +338,66 @@ int main(int argc, char* argv[]) {
         }
     }
 
+
     DriverEntry = (proxyCall)(MainModule->GetMappedImageBase() + MainModule->GetEP());
+    Logger::Log("[+] Base : 0x%llx \t DriverEntry : 0x%llx \n", MainModule->GetMappedImageBase(), DriverEntry);
 
-    const HANDLE ThreadHandle = CreateThread(nullptr, 4096, FakeDriverEntry, nullptr, 0, nullptr);
+    // ProcessNotify = (proxyCall)(MainModule->GetMappedImageBase() + 0xde8c);     // 0xdd40
+    // Thread ObPreOperation 0xcf94
+    // Process ObPostOperation 0xcf7c
+    // LoadImage 0xc7ac
+    // Process ObPreOperation 0xcf94
+    // CreateThread  0xe86c
+    // Thread ObPostOperation 0xcf7c
+    // Registry Notify 0xe564
 
-    if (!ThreadHandle)
-        return 0;
 
-    while (true) {
-        Sleep(1000);
+    // Execute DriverEntry
+    {
+        const HANDLE ThreadHandle = CreateThread(nullptr, 4096, FakeDriverEntry, nullptr, 0, nullptr);
 
-        DWORD ExitCode;
-        if (GetExitCodeThread(ThreadHandle, &ExitCode)) {
-            if (ExitCode != STILL_ACTIVE) {
-                break;
+        if (!ThreadHandle)
+            return 0;
+
+        while (true) {
+            Sleep(1000);
+
+            DWORD ExitCode;
+            if (GetExitCodeThread(ThreadHandle, &ExitCode)) {
+                if (ExitCode != STILL_ACTIVE) {
+                    break;
+                }
             }
         }
+
+        CloseHandle(ThreadHandle);
     }
 
-    CloseHandle(ThreadHandle);
+    Sleep(4000);
+     Logger::Log("[+] CreateThread FakeProcessNotify\n");
+
+    // Execute ProcessNotify
+    {
+        const HANDLE ThreadHandle = CreateThread(nullptr, 4096, FakeProcessNotify, nullptr, 0, nullptr);
+
+        if (!ThreadHandle)
+            return 0;
+
+        while (true) {
+            Sleep(1000);
+
+            DWORD ExitCode;
+            if (GetExitCodeThread(ThreadHandle, &ExitCode)) {
+                if (ExitCode != STILL_ACTIVE) {
+                    break;
+                }
+            }
+        }
+
+        CloseHandle(ThreadHandle);
+    }
+
+
 
     return 0;
 }

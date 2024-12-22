@@ -11,6 +11,8 @@
 
 KERNELDATA _ETHREAD FakeKernelThread = { 0 };
 KERNELDATA _EPROCESS FakeSystemProcess = { 0 };
+KERNELDATA _ETHREAD FakeProcessThread = { 0 };
+KERNELDATA _EPROCESS FakeProcess = { 0 };
 KERNELDATA _KPCR FakeKPCR = { 0 };
 KERNELDATA _KPRCB FakeCPU = { 0 };
 KERNELDATA _DRIVER_OBJECT drvObj = { 0 };

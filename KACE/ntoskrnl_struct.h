@@ -2204,13 +2204,13 @@ struct _SYSTEM_MODULE_EX {
 
 typedef struct _LDR_DATA_TABLE_ENTRY {
     LIST_ENTRY InLoadOrderLinks;
-    LIST_ENTRY InMemoryOrderLinks;
-    LIST_ENTRY InInitializationOrderModuleList;
-    PVOID DllBase;
-    PVOID EntryPoint;
-    ULONG SizeOfImage;
-    UNICODE_STRING FullDllName;
-    UNICODE_STRING BaseDllName;
+    LIST_ENTRY InMemoryOrderLinks;                  // 0x10
+    LIST_ENTRY InInitializationOrderModuleList;     // 0x20
+    PVOID DllBase;      // 0x30
+    PVOID EntryPoint;   // 0x38
+    ULONG SizeOfImage;  // 0x40
+    UNICODE_STRING FullDllName;     // 0x48
+    UNICODE_STRING BaseDllName;     // 0x58
     ULONG Flags;
     USHORT LoadCount;
     USHORT TlsIndex;

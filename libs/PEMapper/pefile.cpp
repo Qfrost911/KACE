@@ -1,4 +1,5 @@
 #include "pefile.h"
+#include <assert.h>
 #include <Logger/Logger.h>
 #include <SymParser\symparser.hpp>
 
@@ -57,6 +58,8 @@ void PEFile::ParseSection() {
         data.raw_address = pImageSectionHeader[i].PointerToRawData;
 
         while (sections.contains(std::string(name))) {
+            if( i== 0xC)    break;
+
             name[strlen(name) - 1] = name[strlen(name) - 1] + 1;
         }
 
@@ -142,7 +145,8 @@ PEFile::PEFile(std::string filename, std::string name, uintmax_t size) {
             ParseSection();
             ParseImport();
             ParseExport();
-        }
+        } else
+            assert(false && "Can not load library");
     }
 }
 

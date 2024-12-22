@@ -10,6 +10,7 @@
 #include <Logger/Logger.h>
 
 #include "environment.h"
+#include <intrin.h>
 
 using fnFreeCall = uint64_t(__fastcall*)(...);
 
@@ -56,7 +57,6 @@ void TrampolineThread(ThreadInfo* info) {
     SetEvent(info->mutex);
     auto ret = info->routineStart(info->routineContext);
     Logger::Log("End of thread with return : %llx\n", ret);
-    
 }
 void* hM_AllocPoolTag(uint32_t pooltype, size_t size, ULONG tag) {
     auto ptr = _aligned_malloc(size, 0x1000);
@@ -173,10 +173,10 @@ NTSTATUS h_IoCreateDevice(_DRIVER_OBJECT* DriverObject, ULONG DeviceExtensionSiz
     realDevice->ReferenceCount = 1;
     realDevice->DriverObject = DriverObject;
     realDevice->NextDevice = 0;
+    realDevice->DeviceExtension = realDevice;
     Logger::Log("\tCreated device : %ls\n", DeviceName->Buffer);
 
     MemoryTracker::TrackVariable((uintptr_t)realDevice, sizeof(_DEVICE_OBJECT), "MainModule.CreatedDeviceObject");
-
 
     return 0;
 }
@@ -184,7 +184,6 @@ NTSTATUS h_IoCreateDevice(_DRIVER_OBJECT* DriverObject, ULONG DeviceExtensionSiz
 NTSTATUS h_IoCreateFileEx(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, OBJECT_ATTRIBUTES* ObjectAttributes, void* IoStatusBlock,
     PLARGE_INTEGER AllocationSize, ULONG FileAttributes, ULONG ShareAccess, ULONG Disposition, ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength,
     void* CreateFileType, PVOID InternalParameters, ULONG Options, void* DriverContext) {
-
 
     Logger::Log("\tCreating file : %ls\n", ObjectAttributes->ObjectName->Buffer);
     if (DesiredAccess == 0xC0000000)
@@ -218,13 +217,27 @@ NTSTATUS h_RtlGetVersion(RTL_OSVERSIONINFOW* lpVersionInformation) {
     return ret;
 }
 
-EXCEPTION_DISPOSITION _c_exception(_EXCEPTION_RECORD* ExceptionRecord, void* EstablisherFrame, _CONTEXT* ContextRecord,
-    _DISPATCHER_CONTEXT* DispatcherContext) {
+NTSTATUS h_PsGetVersion(PULONG MajorVersion, PULONG MinorVersion, PULONG BuildNumber, PUNICODE_STRING CSDVersion) {
+    if (MajorVersion)
+        *MajorVersion = 10;
+    if (MinorVersion)
+        *MinorVersion = 0;
+    if (BuildNumber)
+        *BuildNumber = (unsigned __int16)NtBuildNumber;
+    if (CSDVersion) {
+        // *CSDVersion = CmCSDVersionString;
+        DebugBreak();
+    }
+    return (NtBuildNumber & 0xF0000000) == 0xC0000000;
+}
+
+EXCEPTION_DISPOSITION _c_exception(
+    _EXCEPTION_RECORD* ExceptionRecord, void* EstablisherFrame, _CONTEXT* ContextRecord, _DISPATCHER_CONTEXT* DispatcherContext) {
     return (EXCEPTION_DISPOSITION)__NtRoutine("__C_specific_handler", ExceptionRecord, EstablisherFrame, ContextRecord, DispatcherContext);
 }
 
-NTSTATUS h_RtlMultiByteToUnicodeN(PWCH UnicodeString, ULONG MaxBytesInUnicodeString, PULONG BytesInUnicodeString, const CHAR* MultiByteString,
-    ULONG BytesInMultiByteString) {
+NTSTATUS h_RtlMultiByteToUnicodeN(
+    PWCH UnicodeString, ULONG MaxBytesInUnicodeString, PULONG BytesInUnicodeString, const CHAR* MultiByteString, ULONG BytesInMultiByteString) {
     Logger::Log("\tTrying to convert : %s\n", MultiByteString);
     return __NtRoutine("RtlMultiByteToUnicodeN", UnicodeString, MaxBytesInUnicodeString, BytesInUnicodeString, MultiByteString, BytesInMultiByteString);
 }
@@ -250,8 +263,8 @@ NTSTATUS h_NtReadFile(HANDLE FileHandle, HANDLE Event, PVOID ApcRoutine, PVOID A
     return ret;
 }
 
-NTSTATUS h_NtQueryInformationFile(HANDLE FileHandle, PVOID IoStatusBlock, PVOID FileInformation, ULONG Length,
-    FILE_INFORMATION_CLASS FileInformationClass) {
+NTSTATUS h_NtQueryInformationFile(
+    HANDLE FileHandle, PVOID IoStatusBlock, PVOID FileInformation, ULONG Length, FILE_INFORMATION_CLASS FileInformationClass) {
     Logger::Log("\tQueryInformationFile with class %08x\n", FileInformationClass);
     auto ret = __NtRoutine("NtQueryInformationFile", FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
     return ret;
@@ -281,12 +294,8 @@ NTSTATUS h_ZwClose(HANDLE Handle) {
     __try {
         auto ret = __NtRoutine("NtClose", Handle);
         return STATUS_SUCCESS;
-    }
-    __except (1) {
-        return STATUS_NOT_FOUND;
-    }
+    } __except (1) { return STATUS_NOT_FOUND; }
     return STATUS_SUCCESS;
-    
 }
 
 NTSTATUS h_RtlWriteRegistryValue(ULONG RelativeTo, PCWSTR Path, PCWSTR ValueName, ULONG ValueType, PVOID ValueData, ULONG ValueLength) {
@@ -358,8 +367,8 @@ NTSTATUS h_IoQueryFileDosDeviceName(PVOID fileObject, PVOID* name_info) {
     return STATUS_SUCCESS;
 }
 
-NTSTATUS h_ObOpenObjectByPointer(PVOID Object, ULONG HandleAttributes, PVOID PassedAccessState, ACCESS_MASK DesiredAccess, uint64_t ObjectType,
-    uint64_t AccessMode, PHANDLE Handle) {
+NTSTATUS h_ObOpenObjectByPointer(
+    PVOID Object, ULONG HandleAttributes, PVOID PassedAccessState, ACCESS_MASK DesiredAccess, uint64_t ObjectType, uint64_t AccessMode, PHANDLE Handle) {
     return STATUS_SUCCESS;
 }
 
@@ -385,7 +394,6 @@ void h_ExAcquireFastMutex(PFAST_MUTEX FastMutex) {
     fm->OldIrql = 0; //PASSIVE_LEVEL
     fm->Owner = (_KTHREAD*)h_KeGetCurrentThread();
     fm->Count--;
-
 
     return;
 }
@@ -441,11 +449,20 @@ NTSTATUS h_PsLookupProcessByProcessId(HANDLE ProcessId, _EPROCESS** Process) {
 
     if (ProcessId == (HANDLE)4) {
         *Process = &FakeSystemProcess;
-    } else {
+    } else if (ProcessId == (HANDLE)FakeProcess.UniqueProcessId)
+        *Process = &FakeProcess;
+    else {
         *Process = 0;
         return 0xC000000B; //INVALID_CID
     }
     return 0;
+}
+
+_EPROCESS* h_PsGetCurrentProcess() {
+    auto thread = h_KeGetCurrentThread();
+    _EPROCESS* val = (_EPROCESS*)thread->Tcb.ApcState.Process;
+    Logger::Log("\tReturning : %llx\n", val);
+    return val;
 }
 
 HANDLE h_PsGetProcessId(_EPROCESS* Process) {
@@ -456,25 +473,50 @@ HANDLE h_PsGetProcessId(_EPROCESS* Process) {
     return Process->UniqueProcessId;
 }
 
-_EPROCESS* h_PsGetCurrentProcess() {
-    auto val = (_EPROCESS*)h_KeGetCurrentThread()->Tcb.ApcState.Process;
-    Logger::Log("\tReturning : %llx\n", val);
-    return val;
+UCHAR* h_PsGetProcessImageFileName(_EPROCESS* Process) {
+    if (!Process)
+        return 0;
+
+    UCHAR* filename = nullptr;
+    filename = Process->ImageFileName;
+    
+    //if (IsBadReadPtr(filename, 4) == FALSE)
+    //    Logger::Log("\tReturning : %s\n", filename);
+    //else
+    //    Logger::Log("\t\033[38;5;9mQuery a no access addr : %p\033[0m\n", filename);
+    
+    return filename;
+    // return h_PsGetCurrentProcess()->ImageFileName;
+}
+void* h_PsGetProcessSectionBaseAddress(_EPROCESS* Process) {
+    if (!Process)
+        return 0;
+
+    Logger::Log("\tReturning : %p\n", Process->SectionBaseAddress);
+    return Process->SectionBaseAddress;
+    // return h_PsGetCurrentProcess()->SectionBaseAddress;
+}
+
+HANDLE h_PsGetProcessSessionId(_EPROCESS* Process) {
+    if (!Process)
+        return 0;
+
+    return 0;
 }
 
 _EPROCESS* h_PsGetCurrentThreadProcess() { return (_EPROCESS*)h_KeGetCurrentThread()->Tcb.Process; }
 
 HANDLE h_PsGetCurrentThreadId() { return h_KeGetCurrentThread()->Cid.UniqueThread; }
 
-HANDLE h_PsGetCurrentThreadProcessId() { 
+HANDLE h_PsGetCurrentThreadProcessId() {
     //Logger::Log("About to do stuff\n");
-    auto meh = h_KeGetCurrentThread()->Cid.UniqueProcess; 
+    auto meh = h_KeGetCurrentThread()->Cid.UniqueProcess;
     //Logger::Log("Done\n");
     return meh;
 }
 
-NTSTATUS h_NtQueryInformationProcess(HANDLE ProcessHandle, PROCESSINFOCLASS ProcessInformationClass, PVOID ProcessInformation,
-    ULONG ProcessInformationLength, PULONG ReturnLength) {
+NTSTATUS h_NtQueryInformationProcess(
+    HANDLE ProcessHandle, PROCESSINFOCLASS ProcessInformationClass, PVOID ProcessInformation, ULONG ProcessInformationLength, PULONG ReturnLength) {
 
     if (ProcessHandle == (HANDLE)-1) { //self-check
 
@@ -628,13 +670,13 @@ BOOLEAN h_KeSetTimer(_KTIMER* Timer, LARGE_INTEGER DueTime, _KDPC* Dpc) {
     return true;
 }
 
-void h_KeInitializeTimer(_KTIMER* Timer) { 
-    InitializeListHead(&Timer->TimerListEntry); 
+void h_KeInitializeTimer(_KTIMER* Timer) {
+    InitializeListHead(&Timer->TimerListEntry);
     Timer->Header.SignalState = 0;
 }
 
 ULONG_PTR h_KeIpiGenericCall(PVOID BroadcastFunction, ULONG_PTR Context) {
-    Logger::Log("\tBroadcastFunction: %llx\n", static_cast<const void*>(BroadcastFunction));
+    Logger::Log("\tBroadcastFunction: 0x%llx\n", static_cast<const void*>(BroadcastFunction));
     Logger::Log("\tContent: %llx\n", reinterpret_cast<const void*>(Context));
     auto ret = static_cast<long long (*)(ULONG_PTR)>(BroadcastFunction)(Context);
     Logger::Log("\tIPI Returned : %d\n", ret);
@@ -666,7 +708,9 @@ NTSTATUS h_ExCreateCallback(void* CallbackObject, void* ObjectAttributes, bool C
 }
 
 NTSTATUS h_KeDelayExecutionThread(char WaitMode, BOOLEAN Alertable, PLARGE_INTEGER Interval) {
-    Sleep(Interval->QuadPart * -1 / 10000);
+    int t = Interval->QuadPart * -1 / 10000;
+    Logger::Log("\tSleep : %d\n", t);
+    Sleep(t);
     return STATUS_SUCCESS;
 }
 
@@ -753,9 +797,7 @@ NTSTATUS h_PsSetCreateProcessNotifyRoutineEx(void* NotifyRoutine, BOOLEAN Remove
     }
 }
 
-UCHAR h_KeAcquireSpinLockRaiseToDpc(PKSPIN_LOCK SpinLock) { 
-    return (UCHAR)0x00; 
-}
+UCHAR h_KeAcquireSpinLockRaiseToDpc(PKSPIN_LOCK SpinLock) { return (UCHAR)0x00; }
 
 void h_KeReleaseSpinLock(PKSPIN_LOCK SpinLock, UCHAR NewIrql) { }
 
@@ -815,15 +857,12 @@ int h__vsnwprintf(wchar_t* buffer, size_t count, const wchar_t* format, va_list 
 }
 
 //todo fix mutex bs
-void h_KeInitializeMutex(PVOID Mutex, ULONG level) { 
-    DebugBreak();
+void h_KeInitializeMutex(PVOID Mutex, ULONG level) { DebugBreak(); }
 
+LONG h_KeReleaseMutex(PVOID Mutex, BOOLEAN Wait) {
+    DebugBreak();
+    return 0;
 }
-
-LONG h_KeReleaseMutex(PVOID Mutex, BOOLEAN Wait) { 
-    DebugBreak();
-    return 0; }
-
 
 NTSTATUS h_KeWaitForSingleObject(PVOID Object, void* WaitReason, void* WaitMode, BOOLEAN Alertable, PLARGE_INTEGER Timeout) {
 
@@ -833,7 +872,6 @@ NTSTATUS h_KeWaitForSingleObject(PVOID Object, void* WaitReason, void* WaitMode,
     WaitForSingleObject((HANDLE)hEvent, INFINITE);
     return STATUS_SUCCESS;
 };
-
 
 NTSTATUS h_KeWaitForMutextObject(PVOID Object, void* WaitReason, void* WaitMode, BOOLEAN Alertable, PLARGE_INTEGER Timeout) {
 
@@ -846,10 +884,9 @@ NTSTATUS h_KeWaitForMutextObject(PVOID Object, void* WaitReason, void* WaitMode,
     return STATUS_SUCCESS;
 };
 
-ULONG h_KeQueryTimeIncrement() { 
+ULONG h_KeQueryTimeIncrement() {
     return 156250; //machine with no hv
 }
-
 
 NTSTATUS h_PsCreateSystemThread(PHANDLE ThreadHandle, ULONG DesiredAccess, OBJECT_ATTRIBUTES* ObjectAttributes, HANDLE ProcessHandle, void* ClientId,
     void* StartRoutine, PVOID StartContext) {
@@ -880,30 +917,23 @@ NTSTATUS h_PsTerminateSystemThread(NTSTATUS exitstatus) {
 }
 
 //todo impl
-void h_IofCompleteRequest(void* pirp, CHAR boost) {
-
-
-}
+void h_IofCompleteRequest(void* pirp, CHAR boost) { }
 
 //todo impl
-NTSTATUS h_IoCreateSymbolicLink(PUNICODE_STRING SymbolicLinkName, PUNICODE_STRING DeviceName) { 
+NTSTATUS h_IoCreateSymbolicLink(PUNICODE_STRING SymbolicLinkName, PUNICODE_STRING DeviceName) {
     Logger::Log("\tSymbolic Link Name : %ls\n", SymbolicLinkName->Buffer);
     Logger::Log("\tDeviceName : %ls\n", DeviceName->Buffer);
 
-    return STATUS_SUCCESS; 
-
+    return STATUS_SUCCESS;
 }
 
-BOOL h_IoIsSystemThread(_ETHREAD* thread) { 
+BOOL h_IoIsSystemThread(_ETHREAD* thread) {
     auto ret = (thread->Tcb.MiscFlags & 0x400) != 0;
 
     return ret;
-
 }
 
-void h_IoDeleteDevice(_DEVICE_OBJECT* obj) {
-    
-}
+void h_IoDeleteDevice(_DEVICE_OBJECT* obj) { }
 
 //todo definitely will blowup
 void* h_IoGetTopLevelIrp() {
@@ -912,34 +942,27 @@ void* h_IoGetTopLevelIrp() {
     return &irp;
 }
 
-NTSTATUS h_ObReferenceObjectByHandle(HANDLE handle, ACCESS_MASK DesiredAccess, _OBJECT_TYPE* ObjectType, uint64_t AccessMode, PVOID* Object,
-    void* HandleInformation) {
+NTSTATUS h_ObReferenceObjectByHandle(
+    HANDLE handle, ACCESS_MASK DesiredAccess, _OBJECT_TYPE* ObjectType, uint64_t AccessMode, PVOID* Object, void* HandleInformation) {
 
-    if (HandleInformation) {
-        
-    }
+    if (HandleInformation) { }
 
     if (ObjectType == PsThreadType) {
         *(PHANDLE)(Object) = &FakeKernelThread;
 
         if (Environment::ThreadManager::environment_threads.contains((uintptr_t)handle)) {
             *(_ETHREAD**)(Object) = Environment::ThreadManager::environment_threads[(uintptr_t)handle];
-        }
-        else {
+        } else {
             DebugBreak();
         }
-    }
-    else if (ObjectType == PsProcessType) {
+    } else if (ObjectType == PsProcessType) {
         *(PHANDLE)(Object) = handle;
-    }
-    else if (!ObjectType) //Ugh
+    } else if (!ObjectType) //Ugh
     {
         *(PHANDLE)(Object) = handle;
-    }
-    else {
+    } else {
         *(PHANDLE)(Object) = handle;
     }
-
 
     return 0;
 }
@@ -950,9 +973,7 @@ NTSTATUS h_ObRegisterCallbacks(PVOID CallbackRegistration, PVOID* RegistrationHa
     return STATUS_SUCCESS;
 }
 
-void h_ObUnRegisterCallbacks(PVOID RegistrationHandle) { 
-
-}
+void h_ObUnRegisterCallbacks(PVOID RegistrationHandle) { }
 
 void* h_ObGetFilterVersion(void* arg) { return 0; }
 
@@ -986,7 +1007,6 @@ NTSTATUS h_ZwOpenSection(PHANDLE SectionHandle, ACCESS_MASK DesiredAccess, OBJEC
     return ret;
 }
 
-
 struct RamRange {
     uint64_t base;
     uint64_t size;
@@ -999,19 +1019,18 @@ uint64_t AllocatedContiguous = 0;
 
 RamRange* h_MmGetPhysicalMemoryRanges() { return myRam; }
 
-PVOID h_MmAllocateContiguousMemorySpecifyCache(SIZE_T NumberOfBytes, uintptr_t LowestAcceptableAddress, uintptr_t HighestAcceptableAddress,
-    uintptr_t BoundaryAddressMultiple, uint32_t CacheType) {
+PVOID h_MmAllocateContiguousMemorySpecifyCache(
+    SIZE_T NumberOfBytes, uintptr_t LowestAcceptableAddress, uintptr_t HighestAcceptableAddress, uintptr_t BoundaryAddressMultiple, uint32_t CacheType) {
     Logger::Log("\tLowest : %llx - Highest : %llx - Boundary : %llx - Cache Type : %d - Size : %08x\n", LowestAcceptableAddress, HighestAcceptableAddress,
         BoundaryAddressMultiple, CacheType, NumberOfBytes);
     AllocatedContiguous = (uint64_t)hM_AllocPool(CacheType, NumberOfBytes);
     return (PVOID)AllocatedContiguous;
 }
 
-
 unsigned long long h_MmGetPhysicalAddress(uint64_t BaseAddress) { //To test shit
 
     Logger::Log("\tGetting Physical address for %llx\n", BaseAddress);
-    uint64_t ret = BaseAddress/0x1000;
+    uint64_t ret = BaseAddress / 0x1000;
 
     if (BaseAddress == AllocatedContiguous) {
         Logger::Log("\tGetting physical for last Contiguous Allocated Memory.\n");
@@ -1107,9 +1126,7 @@ PMDL NTAPI h_IoAllocateMdl(IN PVOID VirtualAddress, IN ULONG Length, IN BOOLEAN 
     return Mdl;
 }
 
-PVOID h_ExRegisterCallback(PVOID CallbackObject, PVOID CallbackFunction, PVOID CallbackContext) { 
-    return CallbackObject; 
-}
+PVOID h_ExRegisterCallback(PVOID CallbackObject, PVOID CallbackFunction, PVOID CallbackContext) { return CallbackObject; }
 
 void h_KeInitializeGuardedMutex(_KGUARDED_MUTEX* Mutex) {
     Mutex->Owner = 0i64;
@@ -1124,8 +1141,6 @@ void h_KeInitializeGuardedMutex(_KGUARDED_MUTEX* Mutex) {
     Mutex->Gate.Header.WaitListHead.Blink = &Mutex->Gate.Header.WaitListHead;
     auto hMutex = CreateMutex(NULL, false, NULL);
     MutexManager::mutex_manager.insert(std::pair((uintptr_t)&Mutex->Gate, (uintptr_t)hMutex));
-
-    
 }
 
 NTSTATUS
@@ -1164,7 +1179,7 @@ void h_KeClearEvent(_KEVENT* Event) { //This should set the Event to non-signale
 
     if (!hEvent)
         DebugBreak;
-    
+
     if (!MutexManager::mutex_manager.contains((uintptr_t)Event))
         DebugBreak();
 
@@ -1176,51 +1191,34 @@ void h_KeClearEvent(_KEVENT* Event) { //This should set the Event to non-signale
     return;
 }
 
-BOOLEAN h_KeReadStateTimer(_KTIMER* timer) { 
+BOOLEAN h_KeReadStateTimer(_KTIMER* timer) {
     if (TimerManager::timer_manager.contains(timer)) {
         auto timeSet = TimerManager::timer_manager[timer];
         if ((timer->DueTime.QuadPart * -1 / 10000) + timeSet < GetTickCount64()) {
             timer->Header.SignalState = 1;
             return true;
-        }
-        else {
+        } else {
             return false;
         }
-    }
-    else {
+    } else {
         DebugBreak();
     }
-    return false; 
+    return false;
 }
 
-
-NTSTATUS h_ExGetFirmwareEnvironmentVariable(
-    PUNICODE_STRING VariableName,
-    LPGUID          VendorGuid,
-    PVOID           Value,
-    PULONG          ValueLength,
-    PULONG          Attributes
-) {
-    Logger::Log("\tReading UEFI Var : %ls - GUID : %llx-%llx-%llx-%llx\n", VariableName->Buffer, VendorGuid->Data1, VendorGuid->Data2, VendorGuid->Data3, VendorGuid->Data4);
+NTSTATUS h_ExGetFirmwareEnvironmentVariable(PUNICODE_STRING VariableName, LPGUID VendorGuid, PVOID Value, PULONG ValueLength, PULONG Attributes) {
+    Logger::Log("\tReading UEFI Var : %ls - GUID : %llx-%llx-%llx-%llx\n", VariableName->Buffer, VendorGuid->Data1, VendorGuid->Data2, VendorGuid->Data3,
+        VendorGuid->Data4);
     if (*ValueLength)
         Logger::Log("\tRequested length : %llx\n", *ValueLength);
 
     return STATUS_SUCCESS;
 }
 
-NTSTATUS h_ZwDeviceIoControlFile(
-    HANDLE           FileHandle,
-    HANDLE           Event,
-    PVOID  ApcRoutine,
-     PVOID            ApcContext,
-     PVOID IoStatusBlock,
-    ULONG            IoControlCode,
-    PVOID            InputBuffer,
-   ULONG            InputBufferLength,
-    PVOID            OutputBuffer,
-   ULONG            OutputBufferLength
-) {
-    auto ret = __NtRoutine("NtDeviceIoControlFile", FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
+NTSTATUS h_ZwDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PVOID ApcRoutine, PVOID ApcContext, PVOID IoStatusBlock, ULONG IoControlCode,
+    PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength) {
+    auto ret = __NtRoutine("NtDeviceIoControlFile", FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer,
+        InputBufferLength, OutputBuffer, OutputBufferLength);
     Logger::Log("\tHandle : %llx\n", FileHandle);
     Logger::Log("\tEvent : %llx\n", Event);
     Logger::Log("\tAPC Routine : %llx\n", ApcRoutine);
@@ -1235,18 +1233,13 @@ NTSTATUS h_ZwDeviceIoControlFile(
     return ret;
 }
 
-NTSTATUS h_IoGetDeviceInterfaces(
-    const GUID* InterfaceClassGuid,
-    _DEVICE_OBJECT* PhysicalDeviceObject,
-    ULONG          Flags,
-    wchar_t** SymbolicLinkList
-) {
+NTSTATUS h_IoGetDeviceInterfaces(const GUID* InterfaceClassGuid, _DEVICE_OBJECT* PhysicalDeviceObject, ULONG Flags, wchar_t** SymbolicLinkList) {
     wchar_t GUID[256] = { 0 };
     StringFromGUID2(*InterfaceClassGuid, GUID, 64);
     Logger::Log("\tInterface Class Guid : %ls\n", GUID);
     if (PhysicalDeviceObject) {
         if (PhysicalDeviceObject->DriverObject) {
-            
+
             Logger::Log("Device driver name : %ls\t", PhysicalDeviceObject->DriverObject->DriverName.Buffer);
         }
     }
@@ -1258,35 +1251,24 @@ NTSTATUS h_IoGetDeviceInterfaces(
 
 typedef struct _MM_COPY_ADDRESS {
     union {
-        PVOID            VirtualAddress;
+        PVOID VirtualAddress;
         PVOID PhysicalAddress;
     };
-} MM_COPY_ADDRESS, * PMMCOPY_ADDRESS;
+} MM_COPY_ADDRESS, *PMMCOPY_ADDRESS;
 
-#define MM_COPY_MEMORY_PHYSICAL             0x1
-#define MM_COPY_MEMORY_VIRTUAL              0x2
-NTSTATUS h_MmCopyMemory(
-    PVOID           TargetAddress,
-    MM_COPY_ADDRESS SourceAddress,
-    SIZE_T          NumberOfBytes,
-    ULONG           Flags,
-    PSIZE_T         NumberOfBytesTransferred
-){
+#define MM_COPY_MEMORY_PHYSICAL 0x1
+#define MM_COPY_MEMORY_VIRTUAL 0x2
+NTSTATUS h_MmCopyMemory(PVOID TargetAddress, MM_COPY_ADDRESS SourceAddress, SIZE_T NumberOfBytes, ULONG Flags, PSIZE_T NumberOfBytesTransferred) {
     if (Flags == MM_COPY_MEMORY_PHYSICAL) {
         *NumberOfBytesTransferred = NumberOfBytes;
-    }
-    else {
+    } else {
         Logger::Log("\tCopyying %d bytes from %llx to %llx\n", NumberOfBytes, SourceAddress, TargetAddress);
         *NumberOfBytesTransferred = NumberOfBytes;
     }
     return STATUS_SUCCESS;
 }
 
-PVOID k_MmMapIoSpaceEx(
-   uint64_t PhysicalAddress,
-   SIZE_T           NumberOfBytes,
-   ULONG            Protect
-) {
+PVOID k_MmMapIoSpaceEx(uint64_t PhysicalAddress, SIZE_T NumberOfBytes, ULONG Protect) {
     if (PhysicalAddress == 0xfee00000)
         return 0;
     return (PVOID)(PhysicalAddress * 0x1000);
@@ -1294,29 +1276,24 @@ PVOID k_MmMapIoSpaceEx(
 
 #define EX_SPIN_LOCK volatile LONG
 
-
-__int64 __fastcall ExpWaitForSpinLockSharedAndAcquire(EX_SPIN_LOCK* a1)
-{
+__int64 __fastcall ExpWaitForSpinLockSharedAndAcquire(EX_SPIN_LOCK* a1) {
     unsigned int v2; // esi
     unsigned __int32 v4; // edi
     bool v6; // zf
     signed __int32 v7; // eax
 
     v2 = 0;
-    do
-    {
+    do {
         v4 = *a1;
-        while (v4 < 0)
-        {
-            if ((v4 & 0x40000000) == 0)
-            {
+        while (v4 < 0) {
+            if ((v4 & 0x40000000) == 0) {
                 v7 = _InterlockedCompareExchange(a1, v4 | 0x40000000, v4);
                 v6 = v4 == v7;
                 v4 = v7;
                 if (!v6)
                     continue;
             }
-            
+
             ++v2;
             _mm_pause();
             v4 = *a1;
@@ -1325,38 +1302,32 @@ __int64 __fastcall ExpWaitForSpinLockSharedAndAcquire(EX_SPIN_LOCK* a1)
     return v2;
 }
 
-__int64 __fastcall ExpWaitForSpinLockExclusiveAndAcquire(volatile LONG* a1)
-{
+__int64 __fastcall ExpWaitForSpinLockExclusiveAndAcquire(volatile LONG* a1) {
     unsigned int v2; // ebx
     signed __int32 v4; // eax
     signed __int32 v6; // ett
 
     v2 = 0;
-    do
-    {
+    do {
         v4 = *a1;
-        while (v4 < 0)
-        {
-            if ((v4 & 0x40000000) == 0)
-            {
+        while (v4 < 0) {
+            if ((v4 & 0x40000000) == 0) {
                 v6 = v4;
                 v4 = _InterlockedCompareExchange(a1, v4 | 0x40000000, v4);
                 if (v6 != v4)
                     continue;
             }
-          
+
             ++v2;
             _mm_pause();
-        
+
             v4 = *a1;
         }
     } while (_interlockedbittestandset(a1, 0x1Fu));
     return v2;
 }
 
-
-uint64_t  h_ExAcquireSpinLockExclusive(EX_SPIN_LOCK* SpinLock)
-{
+uint64_t h_ExAcquireSpinLockExclusive(EX_SPIN_LOCK* SpinLock) {
 
     __int64 v2; // rdx
     bool v3; // zf
@@ -1367,12 +1338,9 @@ uint64_t  h_ExAcquireSpinLockExclusive(EX_SPIN_LOCK* SpinLock)
     if (_interlockedbittestandset(SpinLock, 0x1Fu))
         v5 = ExpWaitForSpinLockExclusiveAndAcquire(SpinLock);
     v2 = *(unsigned int*)SpinLock;
-    if ((*SpinLock & 0xBFFFFFFF) != 0x80000000)
-    {
-        do
-        {
-            if ((v2 & 0x40000000) == 0)
-            {
+    if ((*SpinLock & 0xBFFFFFFF) != 0x80000000) {
+        do {
+            if ((v2 & 0x40000000) == 0) {
                 v4 = _InterlockedCompareExchange(SpinLock, v2 | 0x40000000, v2);
                 v3 = (DWORD)v2 == v4;
                 v2 = v4;
@@ -1386,8 +1354,7 @@ uint64_t  h_ExAcquireSpinLockExclusive(EX_SPIN_LOCK* SpinLock)
     return 0;
 }
 
-uint64_t  h_ExAcquireSpinLockShared(EX_SPIN_LOCK* SpinLock)
-{
+uint64_t h_ExAcquireSpinLockShared(EX_SPIN_LOCK* SpinLock) {
 
     _m_prefetchw((const void*)SpinLock);
     int v2 = *SpinLock & 0x7FFFFFFF;
@@ -1396,16 +1363,12 @@ uint64_t  h_ExAcquireSpinLockShared(EX_SPIN_LOCK* SpinLock)
     return 0;
 }
 
-void  h_ExReleaseSpinLockShared(EX_SPIN_LOCK* SpinLock, uint32_t OldIrql)
-{
+void h_ExReleaseSpinLockShared(EX_SPIN_LOCK* SpinLock, uint32_t OldIrql) {
     _InterlockedAnd(SpinLock, 0xBFFFFFFF);
     _InterlockedDecrement(SpinLock);
 }
 
-void  h_ExReleaseSpinLockExclusive(EX_SPIN_LOCK* SpinLock, uint32_t OldIrql)
-{
-    *SpinLock = 0;
-}
+void h_ExReleaseSpinLockExclusive(EX_SPIN_LOCK* SpinLock, uint32_t OldIrql) { *SpinLock = 0; }
 
 void ntoskrnl_provider::Initialize() {
     Provider::AddFuncImpl("ExAcquireSpinLockShared", h_ExAcquireSpinLockShared);
@@ -1459,6 +1422,8 @@ void ntoskrnl_provider::Initialize() {
     Provider::AddFuncImpl("PsGetCurrentProcess", h_PsGetCurrentProcess);
     Provider::AddFuncImpl("IoGetCurrentProcess", h_PsGetCurrentProcess);
     Provider::AddFuncImpl("PsGetProcessId", h_PsGetProcessId);
+    Provider::AddFuncImpl("PsGetProcessImageFileName", h_PsGetProcessImageFileName);
+    Provider::AddFuncImpl("PsGetProcessSectionBaseAddress", h_PsGetProcessSectionBaseAddress);
     Provider::AddFuncImpl("PsGetProcessWow64Process", h_PsGetProcessWow64Process);
     Provider::AddFuncImpl("PsLookupProcessByProcessId", h_PsLookupProcessByProcessId);
     Provider::AddFuncImpl("RtlCompareString", h_RtlCompareString);
@@ -1484,6 +1449,7 @@ void ntoskrnl_provider::Initialize() {
     Provider::AddFuncImpl("IoIsSystemThread", h_IoIsSystemThread);
     Provider::AddFuncImpl("KeInitializeEvent", h_KeInitializeEvent);
     Provider::AddFuncImpl("RtlGetVersion", h_RtlGetVersion);
+    Provider::AddFuncImpl("PsGetVersion", h_PsGetVersion);
     Provider::AddFuncImpl("DbgPrint", printf);
     Provider::AddFuncImpl("__C_specific_handler", _c_exception);
     Provider::AddFuncImpl("RtlMultiByteToUnicodeN", h_RtlMultiByteToUnicodeN);
@@ -1538,5 +1504,6 @@ void ntoskrnl_provider::Initialize() {
     Provider::AddFuncImpl("DbgPrompt", h_DbgPrompt);
     Provider::AddFuncImpl("KdChangeOption", h_KdChangeOption);
     Provider::AddFuncImpl("KdSystemDebugControl", h_KdSystemDebugControl);
+    Provider::AddFuncImpl("PsGetProcessSessionId", h_PsGetProcessSessionId);
     ntoskrnl_export::Initialize();
 }

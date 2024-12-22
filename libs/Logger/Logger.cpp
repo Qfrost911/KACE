@@ -18,6 +18,8 @@ std::mutex logMutex;
 void Logger::Log(const char* format, ...) {
     std::lock_guard<std::mutex> guard(logMutex);
 
+    // char sBuffer[1024] = { 0 };
+
     va_list args;
     va_start(args, format);
     vsprintf_s(sBuffer, format, args);
