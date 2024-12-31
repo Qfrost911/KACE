@@ -3,6 +3,7 @@
 
 #include <unordered_map>
 #include <windows.h>
+#include <string>
 
 #define PAGE_SHIFT 12
 #define PAGE_SIZE (1ULL << PAGE_SHIFT)

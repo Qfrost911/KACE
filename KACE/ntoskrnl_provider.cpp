@@ -10,6 +10,7 @@
 #include <Logger/Logger.h>
 
 #include "environment.h"
+#include <intrin.h>
 
 using fnFreeCall = uint64_t(__fastcall*)(...);
 

@@ -31,6 +31,9 @@
     <ClInclude Include="utils.h">
       <Filter>utils</Filter>
     </ClInclude>
+    <ClInclude Include="Zydis\Zydis.h">
+      <Filter>Zydis</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="kace.cpp" />
@@ -57,6 +60,9 @@
     </ClCompile>
     <ClCompile Include="environment.cpp">
       <Filter>environment</Filter>
+    </ClCompile>
+    <ClCompile Include="Zydis\Zydis.c">
+      <Filter>Zydis</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -89,6 +95,9 @@
     </Filter>
     <Filter Include="utils">
       <UniqueIdentifier>{72a2dbcd-0902-48c5-8c09-d701b991a4a9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Zydis">
+      <UniqueIdentifier>{4dfaa803-7a32-450f-937b-a6b53fad30d7}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

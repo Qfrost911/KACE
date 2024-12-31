@@ -51,7 +51,7 @@ bool MemoryTracker::TrackVariable(uint64_t ptr, uint64_t size, std::string name)
         auto shadowmemory = (uintptr_t)_aligned_malloc(0x1000, 0x1000);
         AddMapping(ptr + (i * 0x1000), 0x1000, shadowmemory);
         memcpy((PVOID)shadowmemory, (PVOID)(ptr + (i * 0x1000)), 0x1000);
-        VirtualProtect((PVOID)(ptr + (i * 0x1000)), 0x1000, PAGE_NOACCESS, &oldProtect);
+        VirtualProtect((PVOID)(ptr + (i * 0x1000)), 0x1000, PAGE_READWRITE, &oldProtect);
     }
 
     mem->firstAlloc.insert(std::pair(name, ptr));
@@ -77,7 +77,7 @@ bool MemoryTracker::TrackVariable(uint64_t ptr, uint64_t size, std::string name,
         AddMapping(ptr + (i * 0x1000), 0x1000, shadowmemory);
         AddMapping(gva + (i * 0x1000), 0x1000, shadowmemory);
         memcpy((PVOID)shadowmemory, (PVOID)(ptr + (i * 0x1000)), 0x1000);
-        VirtualProtect((PVOID)(ptr + (i * 0x1000)), 0x1000, PAGE_NOACCESS, &oldProtect);
+        VirtualProtect((PVOID)(ptr + (i * 0x1000)), 0x1000, PAGE_READWRITE, &oldProtect);
     }
 
     mem->firstAlloc.insert(std::pair(name, gva));
