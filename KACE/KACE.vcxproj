@@ -183,6 +183,7 @@
     <ClCompile Include="paging_emulation.cpp" />
     <ClCompile Include="provider.cpp" />
     <ClCompile Include="static_export_provider.cpp" />
+    <ClCompile Include="Zydis\Zydis.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="config.h" />
@@ -195,6 +196,7 @@
     <ClInclude Include="static_export_provider.h" />
     <ClInclude Include="emulation.h" />
     <ClInclude Include="utils.h" />
+    <ClInclude Include="Zydis\Zydis.h" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="inline_assembly.asm">
