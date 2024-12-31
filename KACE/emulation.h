@@ -1,8 +1,9 @@
-#include <Zydis/Zydis.h>
+#include "Zydis/Zydis.h"
 #include <intrin.h>
 #include <inttypes.h>
 #include <unordered_map>
 #include <windows.h>
+#include <string>
 
 #define KUSD_MIN 0xFFFFF78000000000
 #define KUSD_MAX 0xFFFFF78000001000

@@ -2,7 +2,7 @@
 #include <Logger/Logger.h>
 #include <MemoryTracker/memorytracker.h>
 #include <PEMapper/pefile.h>
-#include <Zydis/Zydis.h>
+#include "Zydis/Zydis.h"
 #include <assert.h>
 
 #include "environment.h"
@@ -39,7 +39,7 @@ namespace VCPU {
     } // namespace MSRContext
 
     void Initialize() {
-        ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_ADDRESS_WIDTH_64);
+        ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64);
         MemoryTracker::AddMapping(KUSD_MIN, 0x1000, KUSD_USERMODE);
         
 
@@ -49,7 +49,8 @@ namespace VCPU {
 
     bool Decode(PCONTEXT context, ZydisDecodedInstruction *instr) {
         ZyanU64 runtime_address = context->Rip;
-        auto status = ZydisDecoderDecodeBuffer(&decoder, (PVOID)context->Rip, ZYDIS_MAX_INSTRUCTION_LENGTH, instr);
+        ZydisDecoderContext ctx;
+        auto status = ZydisDecoderDecodeInstruction(&decoder, &ctx, (PVOID)context->Rip, ZYDIS_MAX_INSTRUCTION_LENGTH, instr);
         return ZYAN_SUCCESS(status);
     }
 
@@ -147,10 +148,15 @@ namespace VCPU {
         bool EmulatePrivilegedMOV(PCONTEXT context, ZydisDecodedInstruction *instr) {
             uint64_t* context_lookup = (uint64_t*)context;
 
-            auto reg_to_write = GRegIndex(instr->operands[0].reg.value);
-            auto reg_to_read = GRegIndex(instr->operands[1].reg.value);
+            auto decoder = ZydisDecoder();
+            ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64);
+            ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT];
+            ZydisDecoderDecodeFull(&decoder, (PVOID)context->Rip, ZYDIS_MAX_INSTRUCTION_LENGTH, instr, operands);
 
-            if (instr->operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER || instr->operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER) {
+            auto reg_to_write = GRegIndex(operands[0].reg.value);
+            auto reg_to_read = GRegIndex(operands[1].reg.value);
+
+            if (operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER || operands[0].type != ZYDIS_OPERAND_TYPE_REGISTER) {
                 DebugBreak();
             }
 
@@ -158,40 +164,40 @@ namespace VCPU {
                 DebugBreak();
             }
 
-            if (instr->operands[0].reg.value == ZYDIS_REGISTER_CR0) { //Write CR0
+            if (operands[0].reg.value == ZYDIS_REGISTER_CR0) { //Write CR0
                 Logger::Log("Writing %llx to CR0\n", context_lookup[reg_to_read]);
                 VCPU::CR0 = context_lookup[reg_to_read];
-            } else if (instr->operands[1].reg.value == ZYDIS_REGISTER_CR0) { //Read CR0
+            } else if (operands[1].reg.value == ZYDIS_REGISTER_CR0) { //Read CR0
                 Logger::Log("Reading CR0\n");
                 context_lookup[reg_to_write] = VCPU::CR0;
-            } else if (instr->operands[0].reg.value == ZYDIS_REGISTER_CR3) { //Write CR3
+            } else if (operands[0].reg.value == ZYDIS_REGISTER_CR3) { //Write CR3
                 Logger::Log("Writing %llx to CR3\n", context_lookup[reg_to_read]);
                 VCPU::CR3 = context_lookup[reg_to_read];
-            } else if (instr->operands[1].reg.value == ZYDIS_REGISTER_CR3) { //Read CR3
+            } else if (operands[1].reg.value == ZYDIS_REGISTER_CR3) { //Read CR3
                 Logger::Log("Reading CR3\n");
                 context_lookup[reg_to_write] = VCPU::CR3;
-            } else if (instr->operands[0].reg.value == ZYDIS_REGISTER_CR4) { //Read CR4
+            } else if (operands[0].reg.value == ZYDIS_REGISTER_CR4) { //Read CR4
                 Logger::Log("Writing %llx to CR4\n", context_lookup[reg_to_read]);
                 VCPU::CR4 = context_lookup[reg_to_read];
-            } else if (instr->operands[1].reg.value == ZYDIS_REGISTER_CR4) { //Read CR4
+            } else if (operands[1].reg.value == ZYDIS_REGISTER_CR4) { //Read CR4
                 Logger::Log("Reading CR4\n");
                 context_lookup[reg_to_write] = VCPU::CR4;
-            } else if (instr->operands[0].reg.value == ZYDIS_REGISTER_CR8) { //Write CR8
+            } else if (operands[0].reg.value == ZYDIS_REGISTER_CR8) { //Write CR8
                 Logger::Log("Writing %llx to CR8\n", context_lookup[reg_to_read]);
                 VCPU::CR8 = context_lookup[reg_to_read];
-            } else if (instr->operands[1].reg.value == ZYDIS_REGISTER_CR8) { //Read CR8
+            } else if (operands[1].reg.value == ZYDIS_REGISTER_CR8) { //Read CR8
                 Logger::Log("Reading CR8\n");
                 context_lookup[reg_to_write] = VCPU::CR8;
             }
-            else if (instr->operands[0].reg.value == ZYDIS_REGISTER_DR7) { //Read CR8
+            else if (operands[0].reg.value == ZYDIS_REGISTER_DR7) { //Read CR8
                 Logger::Log("Writing %llx to DR7\n", context_lookup[reg_to_read]);
                 context->Dr7 = context_lookup[reg_to_read];
             }
-            else if (instr->operands[1].reg.value == ZYDIS_REGISTER_DR6) { //Read DR6
+            else if (operands[1].reg.value == ZYDIS_REGISTER_DR6) { //Read DR6
                 Logger::Log("Reading DR6\n");
                 context_lookup[reg_to_write] = context->Dr6;
             }
-            else if (instr->operands[1].reg.value == ZYDIS_REGISTER_DR7) { //Read DR6
+            else if (operands[1].reg.value == ZYDIS_REGISTER_DR7) { //Read DR6
                 Logger::Log("Reading DR7\n");
                 context_lookup[reg_to_write] = context->Dr7;
             }
@@ -295,39 +301,44 @@ namespace VCPU {
 
         bool EmulateWrite(uintptr_t addr, PCONTEXT context, ZydisDecodedInstruction* instr) { //We return true if we emulated it
 
+            auto decoder = ZydisDecoder();
+            ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64);
+            ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT];
+            ZydisDecoderDecodeFull(&decoder, (PVOID)context->Rip, ZYDIS_MAX_INSTRUCTION_LENGTH, instr, operands);
+
             if (instr->mnemonic == ZYDIS_MNEMONIC_MOV) {
-                if (instr->operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER) {
-                    InstrEmu::WritePtr::EmulateMOV(context, instr->operands[1].reg.value, addr, instr);
+                if (operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+                    InstrEmu::WritePtr::EmulateMOV(context, operands[1].reg.value, addr, instr);
                     return SkipToNext(context, instr);
                 } else {
                     Logger::Log("This should never happen, please investigate\n");
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_OR) {
-                if (instr->operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER) {
-                    InstrEmu::WritePtr::EmulateOR(context, instr->operands[1].reg.value, addr, instr);
+                if (operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+                    InstrEmu::WritePtr::EmulateOR(context, operands[1].reg.value, addr, instr);
                     return SkipToNext(context, instr);
                 } else {
 
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_XOR) {
-                if (instr->operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER) {
-                    InstrEmu::WritePtr::EmulateXOR(context, instr->operands[1].reg.value, addr, instr);
+                if (operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+                    InstrEmu::WritePtr::EmulateXOR(context, operands[1].reg.value, addr, instr);
                     return SkipToNext(context, instr);
                 } else {
 
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_AND) {
-                if (instr->operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER) {
-                    InstrEmu::WritePtr::EmulateAND(context, instr->operands[1].reg.value, addr, instr);
+                if (operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+                    InstrEmu::WritePtr::EmulateAND(context, operands[1].reg.value, addr, instr);
                     return SkipToNext(context, instr);
                 } else {
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_STOSQ) {
-                if (instr->operand_count == 5 && instr->operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY && instr->operands[0].element_size == 64) {
+                if (instr->operand_count == 5 && operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY && operands[0].element_size == 64) {
                     auto EF = __readeflags();
                     __writeeflags(context->EFlags);
                     __stosq((PDWORD64)addr, context->Rax, context->Rcx);
@@ -460,105 +471,110 @@ namespace VCPU {
 
         bool EmulateRead(uintptr_t addr, PCONTEXT context, ZydisDecodedInstruction* instr) { //We return true if we emulated it
 
+            auto decoder = ZydisDecoder();
+            ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64);
+            ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT];
+            ZydisDecoderDecodeFull(&decoder, (PVOID)context->Rip, ZYDIS_MAX_INSTRUCTION_LENGTH, instr, operands);
+
             if (instr->mnemonic == ZYDIS_MNEMONIC_MOV) {
-                if (instr->operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) {
-                    InstrEmu::ReadPtr::EmulateMOV(context, instr->operands[0].reg.value, addr, instr);
+                if (operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+                    InstrEmu::ReadPtr::EmulateMOV(context, operands[0].reg.value, addr, instr);
                     return SkipToNext(context, instr);
                 } else {
                     Logger::Log("This should never happen, please investigate\n");
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_OR) {
-                if (instr->operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) {
-                    InstrEmu::ReadPtr::EmulateOR(context, instr->operands[0].reg.value, addr, instr);
+                if (operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+                    InstrEmu::ReadPtr::EmulateOR(context, operands[0].reg.value, addr, instr);
                     return SkipToNext(context, instr);
                 } else {
 
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_XOR) {
-                if (instr->operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) {
-                    InstrEmu::ReadPtr::EmulateXOR(context, instr->operands[0].reg.value, addr, instr);
+                if (operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+                    InstrEmu::ReadPtr::EmulateXOR(context, operands[0].reg.value, addr, instr);
                     return SkipToNext(context,instr);
                 } else {
 
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_AND) {
-                if (instr->operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+                if (operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) {
 
-                    InstrEmu::ReadPtr::EmulateAND(context, instr->operands[0].reg.value, addr, instr);
+                    InstrEmu::ReadPtr::EmulateAND(context, operands[0].reg.value, addr, instr);
                     return SkipToNext(context, instr);
                 } else {
 
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_SUB) {
-                if (instr->operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+                if (operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) {
 
-                    InstrEmu::ReadPtr::EmulateSUB(context, instr->operands[0].reg.value, addr, instr);
+                    InstrEmu::ReadPtr::EmulateSUB(context, operands[0].reg.value, addr, instr);
                     return SkipToNext(context, instr);
                 } else {
 
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_ADD) {
-                if (instr->operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+                if (operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) {
 
-                    InstrEmu::ReadPtr::EmulateADD(context, instr->operands[0].reg.value, addr, instr);
+                    InstrEmu::ReadPtr::EmulateADD(context, operands[0].reg.value, addr, instr);
                     return SkipToNext(context, instr);
                 } else {
 
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_CMP) {
-                if (instr->operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY && instr->operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER) { //cmp [memory], reg
-                    InstrEmu::EmulateCMPSourcePtr(context, instr->operands[1].reg.value, addr, instr);
+                if (operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY && operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER) { //cmp [memory], reg
+                    InstrEmu::EmulateCMPSourcePtr(context, operands[1].reg.value, addr, instr);
                     return SkipToNext(context, instr);
-                } else if (instr->operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY
-                    && instr->operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) { //cmp reg, [memory]
-                    InstrEmu::EmulateCMPDestPtr(context, instr->operands[0].reg.value, addr, instr);
+                } else if (operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY
+                    && operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) { //cmp reg, [memory]
+                    InstrEmu::EmulateCMPDestPtr(context, operands[0].reg.value, addr, instr);
                     return SkipToNext(context, instr);
-                } else if (instr->operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY
-                    && instr->operands[0].type == ZYDIS_OPERAND_TYPE_IMMEDIATE) { //cmp reg, [memory]
-                    InstrEmu::EmulateCMPImm(context, instr->operands[0].imm.value.s, addr, instr->operands[1].element_size, instr);
+                } else if (operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY
+                    && operands[0].type == ZYDIS_OPERAND_TYPE_IMMEDIATE) { //cmp reg, [memory]
+                    InstrEmu::EmulateCMPImm(context, operands[0].imm.value.s, addr, operands[1].element_size, instr);
                     return SkipToNext(context, instr);
-                } else if (instr->operands[1].type == ZYDIS_OPERAND_TYPE_IMMEDIATE
-                    && instr->operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY) { //cmp reg, [memory]
-                    InstrEmu::EmulateCMPImm(context, instr->operands[1].imm.value.s, addr, instr->operands[0].element_size, instr);
+                } else if (operands[1].type == ZYDIS_OPERAND_TYPE_IMMEDIATE
+                    && operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY) { //cmp reg, [memory]
+                    InstrEmu::EmulateCMPImm(context, operands[1].imm.value.s, addr, operands[0].element_size, instr);
                     return SkipToNext(context, instr);
                 } else {
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_TEST) {
-                if (instr->operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY && instr->operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER) { //cmp [memory], reg
-                    InstrEmu::EmulateTestSourcePtr(context, instr->operands[1].reg.value, addr, instr);
+                if (operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY && operands[1].type == ZYDIS_OPERAND_TYPE_REGISTER) { //cmp [memory], reg
+                    InstrEmu::EmulateTestSourcePtr(context, operands[1].reg.value, addr, instr);
                     return SkipToNext(context, instr);
-                } else if (instr->operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY
-                    && instr->operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) { //cmp reg, [memory]
-                    InstrEmu::EmulateTestDestPtr(context, instr->operands[0].reg.value, addr, instr);
+                } else if (operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY
+                    && operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) { //cmp reg, [memory]
+                    InstrEmu::EmulateTestDestPtr(context, operands[0].reg.value, addr, instr);
                     return SkipToNext(context, instr);
-                } else if (instr->operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY
-                    && instr->operands[0].type == ZYDIS_OPERAND_TYPE_IMMEDIATE) { //cmp reg, [memory]
-                    InstrEmu::EmulateTestImm(context, instr->operands[0].imm.value.s, addr, instr->operands[1].element_size, instr);
+                } else if (operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY
+                    && operands[0].type == ZYDIS_OPERAND_TYPE_IMMEDIATE) { //cmp reg, [memory]
+                    InstrEmu::EmulateTestImm(context, operands[0].imm.value.s, addr, operands[1].element_size, instr);
                     return SkipToNext(context, instr);
-                } else if (instr->operands[1].type == ZYDIS_OPERAND_TYPE_IMMEDIATE
-                    && instr->operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY) { //cmp reg, [memory]
-                    InstrEmu::EmulateTestImm(context, instr->operands[1].imm.value.s, addr, instr->operands[0].element_size, instr);
+                } else if (operands[1].type == ZYDIS_OPERAND_TYPE_IMMEDIATE
+                    && operands[0].type == ZYDIS_OPERAND_TYPE_MEMORY) { //cmp reg, [memory]
+                    InstrEmu::EmulateTestImm(context, operands[1].imm.value.s, addr, operands[0].element_size, instr);
                     return SkipToNext(context, instr);
                 } else {
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_MOVZX) {
-                if (instr->operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY && instr->operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) { //cmp reg, [memory]
-                    InstrEmu::ReadPtr::EmulateMOVZX(context, instr->operands[0].reg.value, addr, instr->operands[1].size, instr);
+                if (operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY && operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) { //cmp reg, [memory]
+                    InstrEmu::ReadPtr::EmulateMOVZX(context, operands[0].reg.value, addr, operands[1].size, instr);
                     return SkipToNext(context, instr);
                 } else {
                     DebugBreak();
                 }
             } else if (instr->mnemonic == ZYDIS_MNEMONIC_MOVSXD) {
-                if (instr->operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY && instr->operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) { //cmp reg, [memory]
-                    InstrEmu::ReadPtr::EmulateMOVSX(context, instr->operands[0].reg.value, addr, instr->operands[1].size, instr);
+                if (operands[1].type == ZYDIS_OPERAND_TYPE_MEMORY && operands[0].type == ZYDIS_OPERAND_TYPE_REGISTER) { //cmp reg, [memory]
+                    InstrEmu::ReadPtr::EmulateMOVSX(context, operands[0].reg.value, addr, operands[1].size, instr);
                     return SkipToNext(context, instr);
                 } else {
                     DebugBreak();
