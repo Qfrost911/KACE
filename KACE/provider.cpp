@@ -1,7 +1,7 @@
-#include <Logger/Logger.h>
-#include <PEMapper/pefile.h>
-#include <SymParser/symparser.hpp>
-
+#include "Logger/Logger.h"
+#include "PEMapper/pefile.h"
+#include "SymParser/symparser.hpp"
+#include <Windows.h>
 #include "provider.h"
 
 namespace Provider {

@@ -1,5 +1,5 @@
-#include <MemoryTracker/memorytracker.h>
-#include <PEMapper/pefile.h>
+#include "MemoryTracker/memorytracker.h"
+#include "PEMapper/pefile.h"
 
 #include "ntoskrnl_provider.h"
 #include "provider.h"
@@ -7,7 +7,7 @@
 
 #include "handle_manager.h"
 #include "nt_define.h"
-#include <Logger/Logger.h>
+#include "Logger/Logger.h"
 
 #include "environment.h"
 #include <intrin.h>
