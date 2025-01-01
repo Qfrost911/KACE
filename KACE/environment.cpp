@@ -1,9 +1,9 @@
 #include "environment.h"
 #include "utils.h"
-#include <MemoryTracker/memorytracker.h>
-#include <Logger/Logger.h>
-#include <PEMapper/pefile.h>
-#include <SymParser/symparser.hpp>
+#include "MemoryTracker/memorytracker.h"
+#include "Logger/Logger.h"
+#include "PEMapper/pefile.h"
+#include "SymParser/symparser.hpp"
 #include <filesystem>
 
 namespace fs = std::filesystem;

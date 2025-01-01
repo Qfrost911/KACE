@@ -1,7 +1,7 @@
 #include "emulation.h"
-#include <Logger/Logger.h>
-#include <MemoryTracker/memorytracker.h>
-#include <PEMapper/pefile.h>
+#include "Logger/Logger.h"
+#include "MemoryTracker/memorytracker.h"
+#include "PEMapper/pefile.h"
 #include "Zydis/Zydis.h"
 #include <assert.h>
 

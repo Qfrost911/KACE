@@ -34,6 +34,36 @@
     <ClInclude Include="Zydis\Zydis.h">
       <Filter>Zydis</Filter>
     </ClInclude>
+    <ClInclude Include="Logger\Logger.h">
+      <Filter>Logger</Filter>
+    </ClInclude>
+    <ClInclude Include="MemoryTracker\framework.h">
+      <Filter>MemoryTracker</Filter>
+    </ClInclude>
+    <ClInclude Include="MemoryTracker\memorytracker.h">
+      <Filter>MemoryTracker</Filter>
+    </ClInclude>
+    <ClInclude Include="MemoryTracker\pch.h">
+      <Filter>MemoryTracker</Filter>
+    </ClInclude>
+    <ClInclude Include="SymParser\structs.hpp">
+      <Filter>SymParser</Filter>
+    </ClInclude>
+    <ClInclude Include="SymParser\symparser.hpp">
+      <Filter>SymParser</Filter>
+    </ClInclude>
+    <ClInclude Include="SymParser\util.hpp">
+      <Filter>SymParser</Filter>
+    </ClInclude>
+    <ClInclude Include="PEMapper\framework.h">
+      <Filter>PEMapper</Filter>
+    </ClInclude>
+    <ClInclude Include="PEMapper\pch.h">
+      <Filter>PEMapper</Filter>
+    </ClInclude>
+    <ClInclude Include="PEMapper\pefile.h">
+      <Filter>PEMapper</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="kace.cpp" />
@@ -63,6 +93,27 @@
     </ClCompile>
     <ClCompile Include="Zydis\Zydis.c">
       <Filter>Zydis</Filter>
+    </ClCompile>
+    <ClCompile Include="Logger\Logger.cpp">
+      <Filter>Logger</Filter>
+    </ClCompile>
+    <ClCompile Include="MemoryTracker\memorytracker.cpp">
+      <Filter>MemoryTracker</Filter>
+    </ClCompile>
+    <ClCompile Include="MemoryTracker\pch.cpp">
+      <Filter>MemoryTracker</Filter>
+    </ClCompile>
+    <ClCompile Include="SymParser\symparser.cpp">
+      <Filter>SymParser</Filter>
+    </ClCompile>
+    <ClCompile Include="PEMapper\pch.cpp">
+      <Filter>PEMapper</Filter>
+    </ClCompile>
+    <ClCompile Include="PEMapper\pefile.cpp">
+      <Filter>PEMapper</Filter>
+    </ClCompile>
+    <ClCompile Include="PEMapper\PEMapper.cpp">
+      <Filter>PEMapper</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -98,6 +149,18 @@
     </Filter>
     <Filter Include="Zydis">
       <UniqueIdentifier>{4dfaa803-7a32-450f-937b-a6b53fad30d7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Logger">
+      <UniqueIdentifier>{adb487fa-3ef5-4d68-9e1a-bf0c96d059a3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MemoryTracker">
+      <UniqueIdentifier>{3b35120f-7628-469d-a1cd-4028db48f68f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="PEMapper">
+      <UniqueIdentifier>{415eaa78-af06-4080-b5dd-ea1b7ff35217}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="SymParser">
+      <UniqueIdentifier>{23f72e9b-7adf-4ac9-b647-53736ca3fd23}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

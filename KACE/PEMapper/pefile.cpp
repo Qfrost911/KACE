@@ -1,6 +1,6 @@
 #include "pefile.h"
-#include <Logger/Logger.h>
-#include <SymParser\symparser.hpp>
+#include "../Logger/Logger.h"
+#include "../SymParser/symparser.hpp"
 
 #define IMPORT_MODULE_DIRECTORY "c:\\emu\\"
 

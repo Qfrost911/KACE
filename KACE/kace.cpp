@@ -6,11 +6,11 @@
 #include <iostream>
 #include <mutex>
 
-#include <PEMapper/pefile.h>
+#include "PEMapper/pefile.h"
 
-#include <Logger/Logger.h>
-#include <MemoryTracker/memorytracker.h>
-#include <SymParser/symparser.hpp>
+#include "Logger/Logger.h"
+#include "MemoryTracker/memorytracker.h"
+#include "SymParser/symparser.hpp"
 
 #include "emulation.h"
 #include "environment.h"
